@@ -142,10 +142,29 @@ class ConfluencePage(object):
             self.set_label()
         return {"url": self.page_url, "id": self.page_id}
 
-    def update(self,content,parent_id=0):
-        self.remove()
-        self.parent_id = parent_id
-        self.add(str(parent_id),content)
+    def update(self,content,parent_id=None, comment = None, minor = True):
+        self.logger.debug("Update page '{}'; label = [{}]".format(self.name, self.label))
+        page_update = self.get()
+        for key in page_update.keys():
+            if key not in ['title', 'id', 'version', 'space', 'parentId']:
+                del(page_update[key])
+        
+        page_update['content'] = content
+        if parent_id is not None:
+            page_update['parentId'] = str(parent_id)
+
+        page_update_options = {'versionComment' : 'api', 'minorEdit': minor}
+        if comment is not None:
+            page_update_options['versionComment'] = comment
+
+
+        self.post_to_wiki = self.server.confluence2.updatePage(self.token, page_update, page_update_options)
+        self.created_page = self.server.confluence2.getPage(self.token, self.spaceKey, self.name)
+        self.page_url = self.created_page["url"]
+        self.page_id = self.created_page["id"]
+        if self.label:
+            self.set_label()
+        return {"url": self.page_url, "id": self.page_id}
 
     def get(self):
         self.wanted_page = self.server.confluence2.getPage(self.token, self.spaceKey, self.name)
@@ -224,8 +243,10 @@ def Parser():
     parser_updatepage = subparsers.add_parser('updatepage', help='Update a page')
     parser_updatepage.add_argument("-n", "--name", help="Page name", required=True)
     parser_updatepage.add_argument("-s", "--spacekey", help="Space Key", required=True)
-    parser_updatepage.add_argument("-P", "--parentpage", help="Parent page ID", default="0")
+    parser_updatepage.add_argument("-P", "--parentpage", help="Parent page ID")
     parser_updatepage.add_argument("-l", "--label", help="Page label", default="created_via_api")
+    parser_updatepage.add_argument("-c", "--comment", help="Update comment", default="update_via_api")
+    
     files_updatepage = parser_updatepage.add_mutually_exclusive_group()
     files_updatepage.add_argument("-f", "--file", help="Read content from this file")
     files_updatepage.add_argument("-S", "--stdin", help="Read content from STDIN", action="store_true")
@@ -342,7 +363,7 @@ def Actions(token,xml_server,args,content):
             print(copy_page.get()["url"])
         elif args.action == "updatepage":
             update_page = ConfluencePage(token,xml_server,args.name,args.spacekey,content,args.parentpage,label=args.label)
-            update_page.update(content,args.parentpage)
+            update_page.update(content,parent_id=args.parentpage,comment=args.comment)
             update_page.set_label()
             print(update_page.get()['url'])
 
